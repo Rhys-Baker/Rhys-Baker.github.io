@@ -1,0 +1,40 @@
+body{
+	background-color:#ffffff;
+	margin: 0px;
+}
+
+
+.titleHeader {
+		/*center the text*/
+	align-items:center;
+	display:flex;
+	flex-direction:column;
+	justify-content:center;
+	
+	
+	height:100vh;
+	width:100%;
+	
+	background:url('assets/images/code-background.png') center center / cover no-repeat;
+		/*paralax effect*/
+	background-attachment: fixed;
+}
+
+.title {
+	color: #FFFFFF;
+}
+
+
+nav{
+	background-color:#2560d0;
+}
+
+h1{
+	font-family:'Oswald', sans-serif;
+	font-size:120px;
+	text-align:center;
+}
+
+footer{
+	background-color:#2560d0;
+}
