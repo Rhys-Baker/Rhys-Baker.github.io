@@ -76,3 +76,22 @@ footer{
 	color: white;
 	text-align: center;
 }
+
+.btn-group button {
+  background-color: #333; 
+  border: 1px solid black;
+  color: white; /* White text */
+  padding: 10px 24px; /* Some padding */
+  cursor: pointer; /* Pointer/hand icon */
+  width: 25%;
+  display: block; /* Make the buttons appear below each other */
+}
+
+.btn-group button:not(:last-child) {
+  border-bottom: none; /* Prevent double borders */
+}
+
+/* Add a background color on hover */
+.btn-group button:hover {
+  background-color: #111;
+}
