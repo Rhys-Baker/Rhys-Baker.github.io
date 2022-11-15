@@ -104,8 +104,9 @@ function projectPoint(y, x, z, f){
 }
 
 
-async function update(){
-	while (true){
+async function run(){
+	run = true
+	while (run){
 		rotationMatrix = [
 			[1, 0, 0],
 			[0, Math.cos(a), -Math.sin(a)],
@@ -118,7 +119,11 @@ async function update(){
 	}
 }
 
-update()
+function stop(){
+	run = false
+}
+
+run()
 
   </script>
  </body>
