@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+ <head>
+  <title>Raycast</title>
+ </head>
+ <body>
+  <canvas onmousemove="update(event)" onClick="moveStartPoint(event)" id="canvas" width="320" height="240" style="border: 1px #000000 solid">Your browser does not support the Canvas element</canvas>
+ </body>
+ <script>
+ // Set up CTX for drawing
+canvas = document.getElementById("canvas");
+ctx = canvas.getContext("2d");
+
+// For moving the end point
+function getMousePos(canvas, evt) {
+  var rect = canvas.getBoundingClientRect();
+  return {
+    x: evt.clientX - rect.left,
+    y: evt.clientY - rect.top
+  };
+}
+
+// Draw a point at its coords with a specified color
+function drawPoint(point, color){
+	prevStyle = ctx.fillStyle;
+	
+	ctx.fillStyle = color;
+	ctx.fillRect(point.x-2, point.y-2, 4, 4);
+	
+	ctx.fillStyle = prevStyle;
+}
+
+function drawWall(wall, color){
+	prevStrokeStyle = ctx.strokeStyle;
+	ctx.strokeStyle = color;
+	
+	drawPoint(wall.a, color)
+	drawPoint(wall.b, color)
+	ctx.beginPath();
+	ctx.moveTo(wall.a.x, wall.a.y);
+	ctx.lineTo(wall.b.x, wall.b.y);
+	ctx.stroke();
+	
+	ctx.strokeStyle = prevStrokeStyle;
+}
+
+
+function cross(x1, y1, x2, y2){
+	return x1 * y2 - y1 * x2;
+}
+function gcd(a, b) {
+    if (b) {
+        return gcd(b, a % b);
+    } else {
+        return Math.abs(a);
+    }
+}
+
+
+function rayIntersectsWall(s, e, w){
+	// Ray direction
+	rx = e.x - s.x;
+	ry = e.y - s.y;
+	
+	// Wall direction
+	sx = w.b.x - w.a.x;
+	sy = w.b.y - w.a.y;
+	
+	// Cross products
+	rxs = cross(
+		rx,
+		ry,
+		sx,
+		sy
+	);
+	t_num = cross(
+		w.a.x - s.x,
+		w.a.y - s.y,
+		sx,
+		sy
+	);
+	u_num = cross(
+		w.a.x - s.x,
+		w.a.y - s.y,
+		rx,
+		ry
+	);
+	
+	// Check if parallel
+	if(rxs == 0){
+		return e // No intersection
+	}
+	
+	// Check if the intersection is within bounds
+	if ((rxs > 0 && (t_num < 0 || t_num > rxs || u_num < 0 || u_num > rxs)) ||
+        (rxs < 0 && (t_num > 0 || t_num < rxs || u_num > 0 || u_num < rxs))) {
+        return e; // No intersection
+    }
+	
+
+	// Compute intersection point
+	ix = s.x + Math.floor((t_num * rx) / rxs);
+	iy = s.y + Math.floor((t_num * ry) / rxs);
+	
+	desired_distance = 1; // Step back by 1 unit
+	magnitude_sq = rx * rx + ry * ry;
+	
+	step_back_x = Math.floor((rx * desired_distance) / magnitude_sq);
+	step_back_y = Math.floor((ry * desired_distance) / magnitude_sq);
+		
+	ix -= step_back_x;
+	iy -= step_back_y;
+		
+	return {x:ix, y:iy}; // Intersection exists
+
+	
+}
+
+startPoint = {
+	x:50,
+	y:200
+};
+endPoint = {
+	x:250,
+	y:50
+};
+intersectPoint = {
+	x:0,
+	y:0
+}
+wall = {
+	a: {x:125, y:25},
+	b: {x:225, y:175}
+};
+
+function draw(){
+	ctx.fillStyle = "#FFFFFF"
+	ctx.fillRect(0, 0, canvas.width, canvas.height)
+	
+	drawPoint(startPoint, "#FF0000");
+	drawPoint(endPoint,   "#00FF00");
+	drawWall (wall,       "#0000FF");
+
+	intersectPoint = rayIntersectsWall(startPoint, endPoint, wall);
+	drawWall({a:startPoint, b:intersectPoint}, "#FF0000");
+	drawPoint(intersectPoint, "#FF00FF");
+}
+
+function update(e){
+	endPoint = getMousePos(canvas, e);
+
+	draw();
+}
+
+function moveStartPoint(e){
+	startPoint = intersectPoint;
+	draw(e);
+}
+
+draw();
+
+
+
+
+
+ </script>
+</html>
