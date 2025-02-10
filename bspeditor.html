@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D BSP Tree Demo</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+      }
+
+      #canvas {
+        display: block;
+        margin: 10px auto;
+        border: 1px solid black;
+      }
+
+      #tree-and-menu {
+        display: flex;
+      }
+
+      .tree-container {
+        flex: 2;
+        display: flex;
+        justify-content: center;
+        margin-top: 20px;
+      }
+
+      .menu {
+        flex: 1;
+        padding: 20px;
+        border-left: 2px solid black;
+      }
+
+      .node {
+        display: inline-block;
+        padding: 10px;
+        border: 1px solid black;
+        border-radius: 50%;
+        background: lightblue;
+        position: relative;
+        cursor: pointer;
+      }
+
+      .selected {
+        background: orange !important;
+      }
+
+      .children {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas" width="320" height="240"></canvas>
+    <div id="tree-and-menu">
+      <div id="tree" class="tree-container"></div>
+      <div class="menu">
+        <h3>Node Menu</h3>
+        <label>Value:</label>
+        <input type="number" id="nodeValue" onChange="updateNode()" />
+        <br />
+        <br />
+        <label>Angle (0-1):</label>
+        <input type="number" step="0.01" min="0" max="0.999" id="nodeAngle" onChange="updateNode()" />
+        <br />
+        <br />
+        <label>Distance:</label>
+        <input type="number" id="nodeDistance" onChange="updateNode()" />
+        <br />
+        <br />
+        <button onclick="updateNode()">Update</button>
+        <button onclick="deleteNode()">Delete Node</button>
+        <br />
+        <br />
+        <button onclick="addChild(true)">Add Back</button>
+        <button onclick="addChild(false)">Add Front</button>
+        <br />
+        <br />
+        <button onclick="exportTree()">Export Tree</button>
+        <br />
+        <textarea id="textareaExport"></textarea>
+        <label>
+      </div>
+    </div>
+    <script>
+
+    
+      class TreeNode {
+        constructor(value, angle = 0, distance = 0) {
+          this.value = value;
+          this.angle = angle;
+          this.distance = distance;
+          this.id = 0;
+          this.left = null;
+          this.right = null;
+        }
+      }
+      
+      class BinaryTree {
+        constructor() {
+          this.root = new TreeNode(0, 0, 0);
+          this.selectedNode = null;
+        }
+        
+        selectNode(nodeElement, node) {
+          document.querySelectorAll('.node').forEach(el => el.classList.remove('selected'));
+          nodeElement.classList.add('selected');
+          this.selectedNode = node;
+          document.getElementById('nodeValue').value = node.value;
+          document.getElementById('nodeAngle').value = node.angle;
+          document.getElementById('nodeDistance').value = node.distance;
+          this.render()
+        }
+        
+        updateNode() {
+          if (this.selectedNode) {
+            this.selectedNode.value = Number(document.getElementById('nodeValue').value);
+            this.selectedNode.angle = Number(document.getElementById('nodeAngle').value);
+            this.selectedNode.distance = Number(document.getElementById('nodeDistance').value);
+            this.render();
+          }
+        }
+        
+        deleteNode() {
+          if (this.selectedNode && this.selectedNode !== this.root) {
+            const parent = this.findParent(this.root, this.selectedNode);
+            if (parent) {
+              if (parent.left === this.selectedNode) parent.left = null;
+              if (parent.right === this.selectedNode) parent.right = null;
+            }
+            this.selectedNode = parent;
+            this.render();
+          }
+        }
+        
+        addChild(isLeft) {
+          if (this.selectedNode) {
+            if (isLeft && !this.selectedNode.left) {
+              this.selectedNode.left = new TreeNode(0, 0, 0);
+              this.selectedNode = this.selectedNode.left;
+            } else if (!isLeft && !this.selectedNode.right) {
+              this.selectedNode.right = new TreeNode(0, 0, 0);
+              this.selectedNode = this.selectedNode.right;
+            }
+            this.render();
+          }
+        }
+        
+        findParent(node, target) {
+          if (!node || node === target) return null;
+          if (node.left === target || node.right === target) return node;
+          return this.findParent(node.left, target) || this.findParent(node.right, target);
+        }
+        
+        render() {
+          const container = document.getElementById("tree");
+          container.innerHTML = "";
+          if (this.root) {
+            container.appendChild(this.createNodeElement(this.root));
+          }
+          updateCanvas();
+        }
+        
+        createNodeElement(node) {
+          if (!node) return document.createElement("div");
+          const nodeElement = document.createElement("div");
+          nodeElement.className = "node";
+          nodeElement.textContent = node.value;
+          nodeElement.onclick = (event) => {
+            event.stopPropagation();
+            this.selectNode(nodeElement, node);
+          };
+          
+          if(node === this.selectedNode){
+            nodeElement.classList.add('selected');
+          }
+          
+          const childrenContainer = document.createElement("div");
+          childrenContainer.className = "children";
+          if (node.left !== null) childrenContainer.appendChild(this.createNodeElement(node.left));
+          if (node.right !== null) childrenContainer.appendChild(this.createNodeElement(node.right));
+          const wrapper = document.createElement("div");
+          wrapper.appendChild(nodeElement);
+          wrapper.appendChild(childrenContainer);
+          return wrapper;
+        }
+        traverseAndDraw(node, ctx, canvas) {
+          if (!node) return;
+          if (node.value >= 0) {
+          
+            let theta = node.angle;
+            let d = node.distance;
+            let rad = theta * 2 * Math.PI;
+            let n = {
+              x: Math.cos(rad),
+              y: Math.sin(rad)
+            };
+            let center = {
+              x: n.x * d,
+              y: n.y * d
+            };
+            let p = {
+              x: -n.y,
+              y: n.x
+            };
+            
+            ctx.beginPath();
+            ctx.moveTo(center.x - 1000 * p.x, center.y - 1000 * p.y);
+            ctx.lineTo(center.x + 1000 * p.x, center.y + 1000 * p.y);
+            if(node === this.selectedNode){ ctx.strokeStyle = "orange";} else {ctx.strokeStyle = "black";}
+            ctx.stroke();
+            
+            // Draw normal indicator
+            ctx.beginPath();
+            ctx.moveTo(center.x, center.y);
+            ctx.lineTo(center.x + (10 * n.x), center.y + (10 * n.y));
+            ctx.strokeStyle = 'red';
+            ctx.stroke()
+          
+            if (node.left && typeof node.left === 'object') this.traverseAndDraw(node.left, ctx, canvas);
+            if (node.right && typeof node.right === 'object') this.traverseAndDraw(node.right, ctx, canvas);
+          }
+        }
+      }
+      const tree = new BinaryTree();
+      tree.render();
+
+      function updateCanvas() {
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        tree.traverseAndDraw(tree.root, ctx, canvas);
+      }
+
+      function updateNode() {
+        tree.updateNode();
+      }
+
+      function deleteNode() {
+        tree.deleteNode();
+      }
+
+      function addChild(isLeft) {
+        tree.addChild(isLeft);
+        
+      }
+      function angleToFixedNormal(theta){
+        let rad = theta * 2 * Math.PI;
+        let n = {
+              x: Math.round(Math.cos(rad) * 4096),
+              y: Math.round(Math.sin(rad) * 4096)
+            };
+        return n
+      }
+      
+      function traverseAndAssignId(node, currentValue){
+        if(node.value < 0){
+            node.id = node.value;
+            return currentValue;
+        }
+        node.id = currentValue;
+        currentValue ++;
+        currentValue = traverseAndAssignId(node.left, currentValue);
+        currentValue = traverseAndAssignId(node.right, currentValue);
+        return currentValue;
+      }
+      
+      exportString = "";
+      function traverseAndPrintInfo(node){
+        if(node.id < 0){
+            return;
+        }
+        norm = angleToFixedNormal(node.angle);
+        exportString += `    {\n`;
+        exportString += `        .normal = { .x = ${norm.x}, .y = ${norm.y}},\n`;
+        exportString += `        .distance = ${node.distance * 4096},\n`;
+        exportString += `        .children = {\n`;
+        exportString += `            ${node.right.id}, ${node.left.id}\n`;
+        exportString += `        }\n`;
+        exportString += `    },\n`;
+        traverseAndPrintInfo(node.left);
+        traverseAndPrintInfo(node.right);
+      }
+      
+      function generateTreeString(){
+        // Assign a unique ID to each node
+        totalNodes = traverseAndAssignId(tree.root, 0);
+        exportString = "";
+        exportString += `BSPNode bspNodes[${totalNodes}] = {\n`;
+        traverseAndPrintInfo(tree.root);
+        exportString += `};\n`;
+        return exportString;
+      }
+      
+      function exportTree(){
+        exportString = generateTreeString();
+        textarea = document.getElementById("textareaExport");
+        textarea.value = exportString;
+        console.log(exportString);
+      }
+      function downloadTree(){
+        exportString = generateTreeString();
+      }
+      
+      
+      document.getElementById("nodeValue").addEventListener('input', updateNode);
+      document.getElementById("nodeAngle").addEventListener('input', updateNode);
+      document.getElementById("nodeDistance").addEventListener('input', updateNode);
+      
+    </script>
+  </body>
+</html>
