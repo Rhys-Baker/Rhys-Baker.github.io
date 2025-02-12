@@ -187,44 +187,162 @@
           wrapper.appendChild(childrenContainer);
           return wrapper;
         }
-        traverseAndDraw(node, ctx, canvas) {
-          if (!node) return;
-          if (node.value >= 0) {
-          
-            let theta = node.angle;
-            let d = node.distance;
-            let rad = theta * 2 * Math.PI;
-            let n = {
-              x: Math.cos(rad),
-              y: Math.sin(rad)
-            };
-            let center = {
-              x: n.x * d,
-              y: n.y * d
-            };
-            let p = {
-              x: -n.y,
-              y: n.x
-            };
-            
-            ctx.beginPath();
-            ctx.moveTo(center.x - 1000 * p.x, center.y - 1000 * p.y);
-            ctx.lineTo(center.x + 1000 * p.x, center.y + 1000 * p.y);
-            if(node === this.selectedNode){ ctx.strokeStyle = "orange";} else {ctx.strokeStyle = "black";}
-            ctx.stroke();
-            
-            // Draw normal indicator
-            ctx.beginPath();
-            ctx.moveTo(center.x, center.y);
-            ctx.lineTo(center.x + (10 * n.x), center.y + (10 * n.y));
-            ctx.strokeStyle = 'red';
-            ctx.stroke()
-          
-            if (node.left && typeof node.left === 'object') this.traverseAndDraw(node.left, ctx, canvas);
-            if (node.right && typeof node.right === 'object') this.traverseAndDraw(node.right, ctx, canvas);
-          }
+        
+    traverseAndDraw(node, ctx, canvas, ancestors = [], isBehind = false) {
+        if (!node) return;
+    
+        let theta = node.angle;
+        let d = node.distance;
+        let rad = theta * 2 * Math.PI;
+        let n = { x: Math.cos(rad), y: Math.sin(rad) };
+        let center = { x: n.x * d, y: n.y * d };
+        let p = { x: -n.y, y: n.x };
+    
+        // Define an initial large segment
+        let segment = {
+            start: { x: center.x - 1000 * p.x, y: center.y - 1000 * p.y },
+            end: { x: center.x + 1000 * p.x, y: center.y + 1000 * p.y }
+        };
+    
+        // Filter ancestors to only clip if this node is on the back side
+        //let relevantAncestors = ancestorLines.filter(ancestor => isBehind);
+    
+        // Clip the segment against relevant ancestor lines
+        ancestors.forEach(ancestor => {
+            console.log(node.value, ancestor.value, findPosition(node, ancestor));
+            let pos = findPosition(node, ancestor);
+            if(pos !== null){
+                segment = clipSegment(segment, ancestor, pos);
+            }
+        });
+        
+        if (!segment) return;
+        // Clip the segment against the canvas boundaries
+        segment = clipToCanvas(segment, canvas);
+        if (!segment) return;
+    
+        // Draw the clipped line
+        ctx.beginPath();
+        ctx.moveTo(segment.start.x, segment.start.y);
+        ctx.lineTo(segment.end.x, segment.end.y);
+        ctx.strokeStyle = node === this.selectedNode ? "orange" : "black";
+        ctx.stroke();
+    
+        // Draw normal indicator from the center of the visible segment
+        let midX = (segment.start.x + segment.end.x) / 2;
+        let midY = (segment.start.y + segment.end.y) / 2;
+
+        ctx.beginPath();
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX + (10 * n.x), midY + (10 * n.y));
+        ctx.strokeStyle = 'red';
+        ctx.stroke();
+
+        // Recursively draw children, passing down correct ancestor data
+        let newAncestors = [...ancestors, node];
+     
+        // Traverse left side (this is behind the node if it's on the "back" side)
+        if (node.left) {
+            this.traverseAndDraw(node.left, ctx, canvas, newAncestors, true);  // "behind" node 0
         }
-      }
+        // Traverse right side (this is in front of node 1 if it's on the "front" side)
+        if (node.right) {
+            this.traverseAndDraw(node.right, ctx, canvas, newAncestors, false); // "in front" of node 1
+        }
+    }
+}
+
+
+function findPosition(target, ancestor) {
+    // Helper function to check if the target is in the left or right of the current node
+    function dfs(current, target) {
+        if (current === null) {
+            return null;
+        }
+        if (current === target) {
+            return 'found';  // Target found
+        }
+        const left = dfs(current.left, target);
+        if (left) {
+            return 'left';  // Target found in the left subtree
+        }
+        const right = dfs(current.right, target);
+        if (right) {
+            return 'right';  // Target found in the right subtree
+        }
+        return null;
+    }
+
+    // Perform DFS from the ancestor node
+    const result = dfs(ancestor, target);
+    
+    if (result === 'left') {
+        return true;
+    } else if (result === 'right') {
+        return false;
+    } else {
+        return null;
+    }
+}
+
+
+function clipSegment(segment, ancestor, behind) {
+
+    let theta = ancestor.angle;
+    let distance = ancestor.distance;
+    let rad = theta * 2 * Math.PI;
+    let normal = { x: Math.cos(rad), y: Math.sin(rad) }; 
+
+    if(behind){
+        d1 = distance - (normal.x * segment.start.x + normal.y * segment.start.y);
+        d2 = distance - (normal.x * segment.end.x + normal.y * segment.end.y);
+    }else{
+        d1 = normal.x * segment.start.x + normal.y * segment.start.y - distance;
+        d2 = normal.x * segment.end.x + normal.y * segment.end.y - distance;
+    }
+    
+    if (d1 >= 0 && d2 >= 0) return segment; // Fully in front
+    if (d1 < 0 && d2 < 0) return null; // Fully behind
+
+    let t = d1 / (d1 - d2);
+    let intersection = {
+        x: segment.start.x + t * (segment.end.x - segment.start.x),
+        y: segment.start.y + t * (segment.end.y - segment.start.y)
+    };
+
+    return d1 >= 0 ? { start: segment.start, end: intersection } : { start: intersection, end: segment.end };
+}
+
+    function clipToCanvas(segment, canvas) {
+        let xMin = 0, yMin = 0, xMax = canvas.width, yMax = canvas.height;
+        let { start, end } = segment;
+
+        function clip(p1, p2, boundaryCheck) {
+            let d1 = boundaryCheck(p1);
+            let d2 = boundaryCheck(p2);
+            if (d1 >= 0 && d2 >= 0) return [p1, p2]; // Fully inside
+            if (d1 < 0 && d2 < 0) return null; // Fully outside
+
+            let t = d1 / (d1 - d2);
+            let intersection = {
+                x: p1.x + t * (p2.x - p1.x),
+                y: p1.y + t * (p2.y - p1.y)
+            };
+            return d1 >= 0 ? [p1, intersection] : [intersection, p2];
+        }
+
+        let clipped = clip(start, end, p => p.x - xMin);
+        if (!clipped) return null;
+        clipped = clip(clipped[0], clipped[1], p => xMax - p.x);
+        if (!clipped) return null;
+        clipped = clip(clipped[0], clipped[1], p => p.y - yMin);
+        if (!clipped) return null;
+        clipped = clip(clipped[0], clipped[1], p => yMax - p.y);
+        if (!clipped) return null;
+
+        return { start: clipped[0], end: clipped[1] };
+    }
+      
       const tree = new BinaryTree();
       tree.render();
 
@@ -268,7 +386,11 @@
         return currentValue;
       }
       
-      exportString = "";
+
+      /////////////////////////////////////////////
+      //     Generate and export functions       //
+      /////////////////////////////////////////////
+
       function traverseAndPrintInfo(node){
         if(node.id < 0){
             return;
@@ -286,6 +408,7 @@
       }
       
       function generateTreeString(){
+        exportString = "";
         // Assign a unique ID to each node
         totalNodes = traverseAndAssignId(tree.root, 0);
         exportString = "";
@@ -294,7 +417,6 @@
         exportString += `};\n`;
         return exportString;
       }
-      
       function exportTree(){
         exportString = generateTreeString();
         textarea = document.getElementById("textareaExport");
@@ -309,6 +431,7 @@
       document.getElementById("nodeValue").addEventListener('input', updateNode);
       document.getElementById("nodeAngle").addEventListener('input', updateNode);
       document.getElementById("nodeDistance").addEventListener('input', updateNode);
+      
       
     </script>
   </body>
