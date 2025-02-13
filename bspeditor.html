@@ -96,6 +96,7 @@
           this.id = 0;
           this.left = null;
           this.right = null;
+          this.polygon = null;
         }
       }
       
@@ -190,7 +191,46 @@
         
     traverseAndDraw(node, ctx, canvas, ancestors = [], isBehind = false) {
         if (!node) return;
+
+        // Handle leaf nodes
+        if (node.value < 0) {
+            let fillPolygon = getCanvasPolygon(canvas);
     
+            // Clip the polygon by all ancestor lines to get the exact remaining region
+            ancestors.forEach(ancestor => {
+                let pos = findPosition(node, ancestor);
+                fillPolygon = clipPolygon(fillPolygon, ancestor, pos);
+            });
+            
+
+            // Set the leaf node's polygon to the full fillNode
+            node.polygon = fillPolygon;
+
+            // Draw the filled polygon
+            switch(node.value){
+                case -1:
+                    ctx.fillStyle = "blue";
+                    break;
+                case -2:
+                    ctx.fillStyle = "red";
+                    break;
+                default:
+                    ctx.fillStyle = "pink";
+                    break;
+            }
+            
+            ctx.beginPath();
+            ctx.moveTo(fillPolygon[0].x, fillPolygon[0].y);
+            for (let i = 1; i < fillPolygon.length; i++) {
+                ctx.lineTo(fillPolygon[i].x, fillPolygon[i].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+    
+            return; // Stop drawing normal lines for solid regions
+        }
+    
+        // Draw lines for non-leaf nodes
         let theta = node.angle;
         let d = node.distance;
         let rad = theta * 2 * Math.PI;
@@ -203,7 +243,9 @@
             start: { x: center.x - 1000 * p.x, y: center.y - 1000 * p.y },
             end: { x: center.x + 1000 * p.x, y: center.y + 1000 * p.y }
         };
-    
+        if(!segment){
+          return;
+        }
         // Filter ancestors to only clip if this node is on the back side
         //let relevantAncestors = ancestorLines.filter(ancestor => isBehind);
     
@@ -219,38 +261,6 @@
         // Clip the segment against the canvas boundaries
         segment = clipToCanvas(segment, canvas);
         if (!segment) return;
-        
-        
-        // If node is solid (-2), compute fill polygon and render
-        if (node.value < 0) {
-            let fillPolygon = getCanvasPolygon(canvas);
-    
-            // Clip the polygon by all ancestor lines to get the exact remaining region
-            ancestors.forEach(ancestor => {
-                let pos = findPosition(node, ancestor);
-                fillPolygon = clipPolygon(fillPolygon, ancestor, pos);
-            });
-            
-            // Draw the filled polygon
-            switch(node.value){
-                case -1:
-                    ctx.fillStyle = "blue";
-                    break;
-                case -2:
-                    ctx.fillStyle = "red";
-                    break;
-            }
-            
-            ctx.beginPath();
-            ctx.moveTo(fillPolygon[0].x, fillPolygon[0].y);
-            for (let i = 1; i < fillPolygon.length; i++) {
-                ctx.lineTo(fillPolygon[i].x, fillPolygon[i].y);
-            }
-            ctx.closePath();
-            ctx.fill();
-    
-            return; // Stop drawing normal lines for solid regions
-        }
     
         // Draw the clipped line
         ctx.beginPath();
@@ -452,8 +462,91 @@ function clipSegment(segment, ancestor, behind) {
             };
         return n
       }
-      
+  
+
+
+      // Polygon splitting
+      class PolygonSplitter {
+    constructor(polygon) {
+        this.polygon = polygon; // Array of {x, y} points
+        this.rectangles = [];
+        this.triangles = [];
+    }
+
+    // Check if a given quadrilateral is a rectangle
+    isRectangle(p1, p2, p3, p4) {
+        let dx1 = p2.x - p1.x, dy1 = p2.y - p1.y;
+        let dx2 = p3.x - p2.x, dy2 = p3.y - p2.y;
+        let dx3 = p4.x - p3.x, dy3 = p4.y - p3.y;
+        let dx4 = p1.x - p4.x, dy4 = p1.y - p4.y;
+        
+        return (dx1 * dx2 + dy1 * dy2 === 0) &&  // Right angle at p2
+               (dx2 * dx3 + dy2 * dy3 === 0) &&  // Right angle at p3
+               (dx3 * dx4 + dy3 * dy4 === 0) &&  // Right angle at p4
+               (dx4 * dx1 + dy4 * dy1 === 0);    // Right angle at p1
+    }
+
+    // Find the largest rectangles inside the polygon
+    findRectangles() {
+        let remainingPoints = [...this.polygon];
+
+        for (let i = 0; i < remainingPoints.length - 3; i++) {
+            for (let j = i + 1; j < remainingPoints.length - 2; j++) {
+                for (let k = j + 1; k < remainingPoints.length - 1; k++) {
+                    for (let l = k + 1; l < remainingPoints.length; l++) {
+                        let rect = [remainingPoints[i], remainingPoints[j], remainingPoints[k], remainingPoints[l]];
+                        if (this.isRectangle(...rect)) {
+                            this.rectangles.push(rect);
+                            remainingPoints = remainingPoints.filter(p => !rect.includes(p));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return remainingPoints; // Return points not part of rectangles
+    }
+
+    // Simple Ear Clipping algorithm for triangulation
+    triangulate(remainingPoints) {
+        if (remainingPoints.length < 3) return;
+
+        let n = remainingPoints.length;
+        let indices = [...Array(n).keys()];
+
+        while (indices.length > 2) {
+            for (let i = 0; i < indices.length; i++) {
+                let a = indices[i];
+                let b = indices[(i + 1) % indices.length];
+                let c = indices[(i + 2) % indices.length];
+
+                let tri = [remainingPoints[a], remainingPoints[b], remainingPoints[c]];
+                this.triangles.push(tri);
+                indices.splice((i + 1) % indices.length, 1); // Remove middle point
+                break;
+            }
+        }
+    }
+
+    // Main function to split polygon
+    split() {
+        let remainingPoints = this.findRectangles();
+        this.triangulate(remainingPoints);
+    }
+}
+
+
+
+      /////////////////////////////////////////////
+      //     Generate and export functions       //
+      /////////////////////////////////////////////
+
       function traverseAndAssignId(node, currentValue){
+        if(!node) {
+          console.log("node is null");
+          return;
+        }
         if(node.value < 0){
             node.id = node.value;
             return currentValue;
@@ -464,14 +557,31 @@ function clipSegment(segment, ancestor, behind) {
         currentValue = traverseAndAssignId(node.right, currentValue);
         return currentValue;
       }
-      
 
-      /////////////////////////////////////////////
-      //     Generate and export functions       //
-      /////////////////////////////////////////////
 
       function traverseAndPrintInfo(node){
         if(node.id < 0){
+            if(!node.polygon || node.id != -2) return; // If not solid or no poly
+
+            let splitter = new PolygonSplitter(node.polygon);
+            splitter.split();
+            
+            splitter.rectangles.forEach(rect =>{
+              rectString += `{\n`;
+              rectString += `    {${Math.round(rect[0].x)}<<12, ${Math.round(rect[0].y)}<<12}, `;
+              rectString += `    {${Math.round(rect[1].x)}<<12, ${Math.round(rect[1].y)}<<12}, `;
+              rectString += `    {${Math.round(rect[2].x)}<<12, ${Math.round(rect[2].y)}<<12}, `;
+              rectString += `    {${Math.round(rect[3].x)}<<12, ${Math.round(rect[3].y)}<<12}\n`;
+              rectString += `},\n`;
+            });
+
+            splitter.triangles.forEach(tri =>{
+              triString += `{\n`;
+              triString += `    {${Math.round(tri[0].x)}<<12, ${Math.round(tri[0].y)}<<12}, `;
+              triString += `    {${Math.round(tri[1].x)}<<12, ${Math.round(tri[1].y)}<<12}, `;
+              triString += `    {${Math.round(tri[2].x)}<<12, ${Math.round(tri[2].y)}<<12}\n`;
+              triString += `},\n`;
+            });
             return;
         }
         norm = angleToFixedNormal(node.angle);
@@ -488,12 +598,22 @@ function clipSegment(segment, ancestor, behind) {
       
       function generateTreeString(){
         exportString = "";
+        rectString = "";
+        triString = "";
         // Assign a unique ID to each node
         totalNodes = traverseAndAssignId(tree.root, 0);
-        exportString = "";
         exportString += `BSPNode bspNodes[${totalNodes}] = {\n`;
+        rectString += `Rectangle mapRects[] = {\n`;
+        triString += `Triangle mapTris[] = {\n`;
+        
         traverseAndPrintInfo(tree.root);
+
         exportString += `};\n`;
+        rectString += `};\n`;
+        triString += `};\n`;
+
+        exportString = `${triString}\n${rectString}\n${exportString}`;
+
         return exportString;
       }
       function exportTree(){
@@ -501,9 +621,6 @@ function clipSegment(segment, ancestor, behind) {
         textarea = document.getElementById("textareaExport");
         textarea.value = exportString;
         console.log(exportString);
-      }
-      function downloadTree(){
-        exportString = generateTreeString();
       }
       
       
