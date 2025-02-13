@@ -209,7 +209,6 @@
     
         // Clip the segment against relevant ancestor lines
         ancestors.forEach(ancestor => {
-            console.log(node.value, ancestor.value, findPosition(node, ancestor));
             let pos = findPosition(node, ancestor);
             if(pos !== null){
                 segment = clipSegment(segment, ancestor, pos);
@@ -220,6 +219,38 @@
         // Clip the segment against the canvas boundaries
         segment = clipToCanvas(segment, canvas);
         if (!segment) return;
+        
+        
+        // If node is solid (-2), compute fill polygon and render
+        if (node.value < 0) {
+            let fillPolygon = getCanvasPolygon(canvas);
+    
+            // Clip the polygon by all ancestor lines to get the exact remaining region
+            ancestors.forEach(ancestor => {
+                let pos = findPosition(node, ancestor);
+                fillPolygon = clipPolygon(fillPolygon, ancestor, pos);
+            });
+            
+            // Draw the filled polygon
+            switch(node.value){
+                case -1:
+                    ctx.fillStyle = "blue";
+                    break;
+                case -2:
+                    ctx.fillStyle = "red";
+                    break;
+            }
+            
+            ctx.beginPath();
+            ctx.moveTo(fillPolygon[0].x, fillPolygon[0].y);
+            for (let i = 1; i < fillPolygon.length; i++) {
+                ctx.lineTo(fillPolygon[i].x, fillPolygon[i].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+    
+            return; // Stop drawing normal lines for solid regions
+        }
     
         // Draw the clipped line
         ctx.beginPath();
@@ -250,6 +281,54 @@
             this.traverseAndDraw(node.right, ctx, canvas, newAncestors, false); // "in front" of node 1
         }
     }
+}
+
+
+
+// Function to get the initial canvas boundary as a polygon
+function getCanvasPolygon(canvas) {
+    return [
+        { x: 0, y: 0 }, 
+        { x: canvas.width, y: 0 }, 
+        { x: canvas.width, y: canvas.height }, 
+        { x: 0, y: canvas.height }
+    ];
+}
+
+function clipPolygon(polygon, ancestor, behind) {
+    if (!polygon || polygon.length < 3) return null; // A valid polygon needs at least 3 points
+
+    let theta = ancestor.angle;
+    let distance = ancestor.distance;
+    let rad = theta * 2 * Math.PI;
+    let normal = { x: Math.cos(rad), y: Math.sin(rad) };
+
+    let clippedPolygon = [];
+    for (let i = 0; i < polygon.length; i++) {  
+        let curr = polygon[i];
+        let next = polygon[(i + 1) % polygon.length];
+
+        let d1 = behind
+            ? distance - (normal.x * curr.x + normal.y * curr.y)
+            : (normal.x * curr.x + normal.y * curr.y) - distance;
+
+        let d2 = behind
+            ? distance - (normal.x * next.x + normal.y * next.y)
+            : (normal.x * next.x + normal.y * next.y) - distance;
+
+        if (d1 >= 0) clippedPolygon.push(curr); // Keep points in the valid region
+
+        if (d1 * d2 < 0) { // Edge crosses the clipping line
+            let t = d1 / (d1 - d2);
+            let intersection = {
+                x: curr.x + t * (next.x - curr.x),
+                y: curr.y + t * (next.y - curr.y)
+            };
+            clippedPolygon.push(intersection);
+        }
+    }
+
+    return clippedPolygon.length >= 3 ? clippedPolygon : null; // Return only valid polygons
 }
 
 
