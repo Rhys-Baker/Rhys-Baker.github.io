@@ -194,42 +194,9 @@
 
         // Handle leaf nodes
         if (node.value < 0) {
-            let fillPolygon = getCanvasPolygon(canvas);
-    
-            // Clip the polygon by all ancestor lines to get the exact remaining region
-            ancestors.forEach(ancestor => {
-                let pos = findPosition(node, ancestor);
-                fillPolygon = clipPolygon(fillPolygon, ancestor, pos);
-            });
-            
-
-            // Set the leaf node's polygon to the full fillNode
-            node.polygon = fillPolygon;
-
-            // Draw the filled polygon
-            switch(node.value){
-                case -1:
-                    ctx.fillStyle = "blue";
-                    break;
-                case -2:
-                    ctx.fillStyle = "red";
-                    break;
-                default:
-                    ctx.fillStyle = "pink";
-                    break;
-            }
-            
-            ctx.beginPath();
-            ctx.moveTo(fillPolygon[0].x, fillPolygon[0].y);
-            for (let i = 1; i < fillPolygon.length; i++) {
-                ctx.lineTo(fillPolygon[i].x, fillPolygon[i].y);
-            }
-            ctx.closePath();
-            ctx.fill();
-    
-            return; // Stop drawing normal lines for solid regions
+          return; // Return early
         }
-    
+        
         // Draw lines for non-leaf nodes
         let theta = node.angle;
         let d = node.distance;
@@ -266,7 +233,8 @@
         ctx.beginPath();
         ctx.moveTo(segment.start.x, segment.start.y);
         ctx.lineTo(segment.end.x, segment.end.y);
-        ctx.strokeStyle = node === this.selectedNode ? "orange" : "black";
+        ctx.strokeStyle = node === this.selectedNode ? "black" : "black";
+        ctx.lineWidth = node === this.selectedNode ? 3 : 1;
         ctx.stroke();
     
         // Draw normal indicator from the center of the visible segment
@@ -276,7 +244,7 @@
         ctx.beginPath();
         ctx.moveTo(midX, midY);
         ctx.lineTo(midX + (10 * n.x), midY + (10 * n.y));
-        ctx.strokeStyle = 'red';
+        ctx.strokeStyle = 'purple';
         ctx.stroke();
 
         // Recursively draw children, passing down correct ancestor data
@@ -289,6 +257,91 @@
         // Traverse right side (this is in front of node 1 if it's on the "front" side)
         if (node.right) {
             this.traverseAndDraw(node.right, ctx, canvas, newAncestors, false); // "in front" of node 1
+        }
+    }
+
+    traverseAndDrawLeaves(node, ctx, canvas, ancestors = [], isBehind = false) {
+        if (!node) return;
+
+        // Handle leaf nodes
+        if (node.value < 0) {
+            let fillPolygon = getCanvasPolygon(canvas);
+    
+            // Clip the polygon by all ancestor lines to get the exact remaining region
+            ancestors.forEach(ancestor => {
+                let pos = findPosition(node, ancestor);
+                fillPolygon = clipPolygon(fillPolygon, ancestor, pos);
+            });
+            
+            // Set the leaf node's polygon to the full fillNode
+            node.polygon = fillPolygon;
+
+            // Draw the filled polygon
+            switch(node.value){
+                case -1:
+                    ctx.fillStyle = node === this.selectedNode ? "#2a5aae" : "#3c82fa";
+                    break;
+                case -2:
+                    ctx.fillStyle = node === this.selectedNode ? "#ae5a2a" : "#fa823c";
+                    break;
+                default:
+                    ctx.fillStyle = "pink";
+                    break;
+            }
+            
+            ctx.beginPath();
+            ctx.moveTo(fillPolygon[0].x, fillPolygon[0].y);
+            for (let i = 1; i < fillPolygon.length; i++) {
+                ctx.lineTo(fillPolygon[i].x, fillPolygon[i].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+    
+            return; // Stop drawing normal lines for solid regions
+        }
+        
+        // Draw lines for non-leaf nodes
+        let theta = node.angle;
+        let d = node.distance;
+        let rad = theta * 2 * Math.PI;
+        let n = { x: Math.cos(rad), y: Math.sin(rad) };
+        let center = { x: n.x * d, y: n.y * d };
+        let p = { x: -n.y, y: n.x };
+    
+        // Define an initial large segment
+        let segment = {
+            start: { x: center.x - 1000 * p.x, y: center.y - 1000 * p.y },
+            end: { x: center.x + 1000 * p.x, y: center.y + 1000 * p.y }
+        };
+        if(!segment){
+          return;
+        }
+        // Filter ancestors to only clip if this node is on the back side
+        //let relevantAncestors = ancestorLines.filter(ancestor => isBehind);
+    
+        // Clip the segment against relevant ancestor lines
+        ancestors.forEach(ancestor => {
+            let pos = findPosition(node, ancestor);
+            if(pos !== null){
+                segment = clipSegment(segment, ancestor, pos);
+            }
+        });
+        
+        if (!segment) return;
+        // Clip the segment against the canvas boundaries
+        segment = clipToCanvas(segment, canvas);
+        if (!segment) return;
+
+        // Recursively draw children, passing down correct ancestor data
+        let newAncestors = [...ancestors, node];
+     
+        // Traverse left side (this is behind the node if it's on the "back" side)
+        if (node.left) {
+            this.traverseAndDrawLeaves(node.left, ctx, canvas, newAncestors, true);  // "behind" node 0
+        }
+        // Traverse right side (this is in front of node 1 if it's on the "front" side)
+        if (node.right) {
+            this.traverseAndDrawLeaves(node.right, ctx, canvas, newAncestors, false); // "in front" of node 1
         }
     }
 }
@@ -439,6 +492,7 @@ function clipSegment(segment, ancestor, behind) {
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        tree.traverseAndDrawLeaves(tree.root, ctx, canvas);
         tree.traverseAndDraw(tree.root, ctx, canvas);
       }
 
