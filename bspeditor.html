@@ -20,35 +20,48 @@
       }
 
       .tree-container {
-        flex: 2;
         display: flex;
+        flex-grow: 1;
         justify-content: center;
-        margin-top: 20px;
+        align-items: flex-start;
+        width: 100%;
+        height: 500px;
+        border: 2px solid #000;
+        overflow: hidden;
+        flex-direction: column;
       }
+      .level {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        position: relative;
+      }
+      .node {
+            width: 40px;
+            height: 40px;
+            background-color: lightblue;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px;
+      }
+      
+      .selected {
+            background-color: orange;
+        }
 
       .menu {
         flex: 1;
         padding: 20px;
-        border-left: 2px solid black;
-      }
-
-      .node {
-        display: inline-block;
-        padding: 10px;
-        border: 1px solid black;
-        border-radius: 50%;
-        background: lightblue;
-        position: relative;
-        cursor: pointer;
-      }
-
-      .selected {
-        background: orange !important;
+        border: 2px solid black;
       }
 
       .children {
         display: flex;
-        justify-content: space-around;
+        justify-content: space-evenly;
         margin-top: 20px;
       }
     </style>
@@ -57,6 +70,7 @@
     <canvas id="canvas" width="320" height="240" style="border: 2px #000000 solid;"></canvas>
     <div id="tree-and-menu">
       <div id="tree" class="tree-container"></div>
+
       <div class="menu">
         <h3>Node Menu</h3>
         <label>Value:</label>
@@ -167,25 +181,38 @@ class BinaryTree {
   
   createNodeElement(node) {
     if (!node) return document.createElement("div");
+    
     const nodeElement = document.createElement("div");
     nodeElement.className = "node";
     nodeElement.textContent = node.value;
-    nodeElement.onclick = (event) => {
+    nodeElement.addEventListener("click", () => {
       event.stopPropagation();
       this.selectNode(nodeElement, node);
-    };
+    });
     
     if(node === this.selectedNode){
       nodeElement.classList.add('selected');
     }
     
-    const childrenContainer = document.createElement("div");
-    childrenContainer.className = "children";
-    if (node.left !== null) childrenContainer.appendChild(this.createNodeElement(node.left));
-    if (node.right !== null) childrenContainer.appendChild(this.createNodeElement(node.right));
     const wrapper = document.createElement("div");
+    wrapper.className = "level";
     wrapper.appendChild(nodeElement);
-    wrapper.appendChild(childrenContainer);
+
+    if(node.left||node.right){
+      const childrenContainer = document.createElement("div");
+      childrenContainer.className = "children";
+
+      if (node.left) {
+        childrenContainer.appendChild(this.createNodeElement(node.left));
+        nodeElement.classList.add('node-parent', 'left');
+      }
+      if (node.right){
+        childrenContainer.appendChild(this.createNodeElement(node.right));
+        nodeElement.classList.add('node-parent', 'right');
+      }
+
+      wrapper.appendChild(childrenContainer);
+    }
     return wrapper;
   }
         
