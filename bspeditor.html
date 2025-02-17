@@ -54,7 +54,7 @@
     </style>
   </head>
   <body>
-    <canvas id="canvas" width="320" height="240"></canvas>
+    <canvas id="canvas" width="320" height="240" style="border: 2px #000000 solid;"></canvas>
     <div id="tree-and-menu">
       <div id="tree" class="tree-container"></div>
       <div class="menu">
@@ -62,16 +62,13 @@
         <label>Value:</label>
         <input type="number" id="nodeValue" onChange="updateNode()" />
         <br />
-        <br />
         <label>Angle (0-1):</label>
         <input type="number" step="0.01" min="0" max="0.999" id="nodeAngle" onChange="updateNode()" />
-        <br />
         <br />
         <label>Distance:</label>
         <input type="number" id="nodeDistance" onChange="updateNode()" />
         <br />
         <br />
-        <button onclick="updateNode()">Update</button>
         <button onclick="deleteNode()">Delete Node</button>
         <br />
         <br />
@@ -79,272 +76,277 @@
         <button onclick="addChild(false)">Add Front</button>
         <br />
         <br />
+        <br />
         <button onclick="exportTree()">Export Tree</button>
         <br />
         <textarea id="textareaExport"></textarea>
-        <label>
+        <br />
+        <br />
+        <button onclick="downloadTree()">Download</button>
+        <input id="fileSelector" type="file"></input>
       </div>
     </div>
     <script>
 
+class TreeNode {
+  constructor(value, angle = 0, distance = 0) {
+    this.value = value;
+    this.angle = angle;
+    this.distance = distance;
+    this.id = 0;
+    this.left = null;
+    this.right = null;
+    this.polygon = null;
+  }
+}
+      
+class BinaryTree {
+  constructor() {
+    this.root = new TreeNode(0, 0, 0);
+    this.selectedNode = null;
+  }
+  
+  selectNode(nodeElement, node) {
+    document.querySelectorAll('.node').forEach(el => el.classList.remove('selected'));
+    nodeElement.classList.add('selected');
+    this.selectedNode = node;
+    document.getElementById('nodeValue').value = node.value;
+    document.getElementById('nodeAngle').value = node.angle;
+    document.getElementById('nodeDistance').value = node.distance;
+    this.render()
+  }
+  
+  updateNode() {
+    if (this.selectedNode) {
+      this.selectedNode.value = Number(document.getElementById('nodeValue').value);
+      this.selectedNode.angle = Number(document.getElementById('nodeAngle').value);
+      this.selectedNode.distance = Number(document.getElementById('nodeDistance').value);
+      this.render();
+    }
+  }
+  
+  deleteNode() {
+    if (this.selectedNode && this.selectedNode !== this.root) {
+      const parent = this.findParent(this.root, this.selectedNode);
+      if (parent) {
+        if (parent.left === this.selectedNode) parent.left = null;
+        if (parent.right === this.selectedNode) parent.right = null;
+      }
+      this.selectedNode = parent;
+      this.render();
+    }
+  }
+  
+  addChild(isLeft) {
+    if (this.selectedNode) {
+      if (isLeft && !this.selectedNode.left) {
+        this.selectedNode.left = new TreeNode(0, 0, 0);
+        this.selectedNode = this.selectedNode.left;
+      } else if (!isLeft && !this.selectedNode.right) {
+        this.selectedNode.right = new TreeNode(0, 0, 0);
+        this.selectedNode = this.selectedNode.right;
+      }
+      this.render();
+    }
+  }
+  
+  findParent(node, target) {
+    if (!node || node === target) return null;
+    if (node.left === target || node.right === target) return node;
+    return this.findParent(node.left, target) || this.findParent(node.right, target);
+  }
+  
+  render() {
+    const container = document.getElementById("tree");
+    container.innerHTML = "";
+    if (this.root) {
+      container.appendChild(this.createNodeElement(this.root));
+    }
+    updateCanvas();
+  }
+  
+  createNodeElement(node) {
+    if (!node) return document.createElement("div");
+    const nodeElement = document.createElement("div");
+    nodeElement.className = "node";
+    nodeElement.textContent = node.value;
+    nodeElement.onclick = (event) => {
+      event.stopPropagation();
+      this.selectNode(nodeElement, node);
+    };
     
-      class TreeNode {
-        constructor(value, angle = 0, distance = 0) {
-          this.value = value;
-          this.angle = angle;
-          this.distance = distance;
-          this.id = 0;
-          this.left = null;
-          this.right = null;
-          this.polygon = null;
-        }
+    if(node === this.selectedNode){
+      nodeElement.classList.add('selected');
+    }
+    
+    const childrenContainer = document.createElement("div");
+    childrenContainer.className = "children";
+    if (node.left !== null) childrenContainer.appendChild(this.createNodeElement(node.left));
+    if (node.right !== null) childrenContainer.appendChild(this.createNodeElement(node.right));
+    const wrapper = document.createElement("div");
+    wrapper.appendChild(nodeElement);
+    wrapper.appendChild(childrenContainer);
+    return wrapper;
+  }
+        
+  traverseAndDraw(node, ctx, canvas, ancestors = [], isBehind = false) {
+      if (!node) return;
+
+      // Handle leaf nodes
+      if (node.value < 0) {
+        return; // Return early
       }
       
-      class BinaryTree {
-        constructor() {
-          this.root = new TreeNode(0, 0, 0);
-          this.selectedNode = null;
-        }
-        
-        selectNode(nodeElement, node) {
-          document.querySelectorAll('.node').forEach(el => el.classList.remove('selected'));
-          nodeElement.classList.add('selected');
-          this.selectedNode = node;
-          document.getElementById('nodeValue').value = node.value;
-          document.getElementById('nodeAngle').value = node.angle;
-          document.getElementById('nodeDistance').value = node.distance;
-          this.render()
-        }
-        
-        updateNode() {
-          if (this.selectedNode) {
-            this.selectedNode.value = Number(document.getElementById('nodeValue').value);
-            this.selectedNode.angle = Number(document.getElementById('nodeAngle').value);
-            this.selectedNode.distance = Number(document.getElementById('nodeDistance').value);
-            this.render();
+      // Draw lines for non-leaf nodes
+      let theta = node.angle;
+      let d = node.distance;
+      let rad = theta * 2 * Math.PI;
+      let n = { x: Math.cos(rad), y: Math.sin(rad) };
+      let center = { x: n.x * d, y: n.y * d };
+      let p = { x: -n.y, y: n.x };
+  
+      // Define an initial large segment
+      let segment = {
+          start: { x: center.x - 1000 * p.x, y: center.y - 1000 * p.y },
+          end: { x: center.x + 1000 * p.x, y: center.y + 1000 * p.y }
+      };
+      if(!segment){
+        return;
+      }
+      // Filter ancestors to only clip if this node is on the back side
+      //let relevantAncestors = ancestorLines.filter(ancestor => isBehind);
+  
+      // Clip the segment against relevant ancestor lines
+      ancestors.forEach(ancestor => {
+          let pos = findPosition(node, ancestor);
+          if(pos !== null){
+              segment = clipSegment(segment, ancestor, pos);
           }
-        }
-        
-        deleteNode() {
-          if (this.selectedNode && this.selectedNode !== this.root) {
-            const parent = this.findParent(this.root, this.selectedNode);
-            if (parent) {
-              if (parent.left === this.selectedNode) parent.left = null;
-              if (parent.right === this.selectedNode) parent.right = null;
-            }
-            this.selectedNode = parent;
-            this.render();
-          }
-        }
-        
-        addChild(isLeft) {
-          if (this.selectedNode) {
-            if (isLeft && !this.selectedNode.left) {
-              this.selectedNode.left = new TreeNode(0, 0, 0);
-              this.selectedNode = this.selectedNode.left;
-            } else if (!isLeft && !this.selectedNode.right) {
-              this.selectedNode.right = new TreeNode(0, 0, 0);
-              this.selectedNode = this.selectedNode.right;
-            }
-            this.render();
-          }
-        }
-        
-        findParent(node, target) {
-          if (!node || node === target) return null;
-          if (node.left === target || node.right === target) return node;
-          return this.findParent(node.left, target) || this.findParent(node.right, target);
-        }
-        
-        render() {
-          const container = document.getElementById("tree");
-          container.innerHTML = "";
-          if (this.root) {
-            container.appendChild(this.createNodeElement(this.root));
-          }
-          updateCanvas();
-        }
-        
-        createNodeElement(node) {
-          if (!node) return document.createElement("div");
-          const nodeElement = document.createElement("div");
-          nodeElement.className = "node";
-          nodeElement.textContent = node.value;
-          nodeElement.onclick = (event) => {
-            event.stopPropagation();
-            this.selectNode(nodeElement, node);
-          };
+      });
+      
+      if (!segment) return;
+      // Clip the segment against the canvas boundaries
+      segment = clipToCanvas(segment, canvas);
+      if (!segment) return;
+  
+      // Draw the clipped line
+      ctx.beginPath();
+      ctx.moveTo(segment.start.x, segment.start.y);
+      ctx.lineTo(segment.end.x, segment.end.y);
+      ctx.strokeStyle = node === this.selectedNode ? "black" : "black";
+      ctx.lineWidth = node === this.selectedNode ? 3 : 1;
+      ctx.stroke();
+  
+      // Draw normal indicator from the center of the visible segment
+      let midX = (segment.start.x + segment.end.x) / 2;
+      let midY = (segment.start.y + segment.end.y) / 2;
+
+      ctx.beginPath();
+      ctx.moveTo(midX, midY);
+      ctx.lineTo(midX + (10 * n.x), midY + (10 * n.y));
+      ctx.strokeStyle = 'purple';
+      ctx.stroke();
+
+      // Recursively draw children, passing down correct ancestor data
+      let newAncestors = [...ancestors, node];
+   
+      // Traverse left side (this is behind the node if it's on the "back" side)
+      if (node.left) {
+          this.traverseAndDraw(node.left, ctx, canvas, newAncestors, true);  // "behind" node 0
+      }
+      // Traverse right side (this is in front of node 1 if it's on the "front" side)
+      if (node.right) {
+          this.traverseAndDraw(node.right, ctx, canvas, newAncestors, false); // "in front" of node 1
+      }
+  }
+
+  traverseAndDrawLeaves(node, ctx, canvas, ancestors = [], isBehind = false) {
+      if (!node) return;
+
+      // Handle leaf nodes
+      if (node.value < 0) {
+          let fillPolygon = getCanvasPolygon(canvas);
+  
+          // Clip the polygon by all ancestor lines to get the exact remaining region
+          ancestors.forEach(ancestor => {
+              let pos = findPosition(node, ancestor);
+              fillPolygon = clipPolygon(fillPolygon, ancestor, pos);
+          });
           
-          if(node === this.selectedNode){
-            nodeElement.classList.add('selected');
+          // Set the leaf node's polygon to the full fillNode
+          node.polygon = fillPolygon;
+
+          // Draw the filled polygon
+          switch(node.value){
+              case -1:
+                  ctx.fillStyle = node === this.selectedNode ? "#2a5aae" : "#3c82fa";
+                  break;
+              case -2:
+                  ctx.fillStyle = node === this.selectedNode ? "#ae5a2a" : "#fa823c";
+                  break;
+              default:
+                  ctx.fillStyle = "pink";
+                  break;
           }
           
-          const childrenContainer = document.createElement("div");
-          childrenContainer.className = "children";
-          if (node.left !== null) childrenContainer.appendChild(this.createNodeElement(node.left));
-          if (node.right !== null) childrenContainer.appendChild(this.createNodeElement(node.right));
-          const wrapper = document.createElement("div");
-          wrapper.appendChild(nodeElement);
-          wrapper.appendChild(childrenContainer);
-          return wrapper;
-        }
-        
-    traverseAndDraw(node, ctx, canvas, ancestors = [], isBehind = false) {
-        if (!node) return;
+          ctx.beginPath();
+          ctx.moveTo(fillPolygon[0].x, fillPolygon[0].y);
+          for (let i = 1; i < fillPolygon.length; i++) {
+              ctx.lineTo(fillPolygon[i].x, fillPolygon[i].y);
+          }
+          ctx.closePath();
+          ctx.fill();
+  
+          return; // Stop drawing normal lines for solid regions
+      }
+      
+      // Draw lines for non-leaf nodes
+      let theta = node.angle;
+      let d = node.distance;
+      let rad = theta * 2 * Math.PI;
+      let n = { x: Math.cos(rad), y: Math.sin(rad) };
+      let center = { x: n.x * d, y: n.y * d };
+      let p = { x: -n.y, y: n.x };
+  
+      // Define an initial large segment
+      let segment = {
+          start: { x: center.x - 1000 * p.x, y: center.y - 1000 * p.y },
+          end: { x: center.x + 1000 * p.x, y: center.y + 1000 * p.y }
+      };
+      if(!segment){
+        return;
+      }
+      // Filter ancestors to only clip if this node is on the back side
+      //let relevantAncestors = ancestorLines.filter(ancestor => isBehind);
+  
+      // Clip the segment against relevant ancestor lines
+      ancestors.forEach(ancestor => {
+          let pos = findPosition(node, ancestor);
+          if(pos !== null){
+              segment = clipSegment(segment, ancestor, pos);
+          }
+      });
+      
+      if (!segment) return;
+      // Clip the segment against the canvas boundaries
+      segment = clipToCanvas(segment, canvas);
+      if (!segment) return;
 
-        // Handle leaf nodes
-        if (node.value < 0) {
-          return; // Return early
-        }
-        
-        // Draw lines for non-leaf nodes
-        let theta = node.angle;
-        let d = node.distance;
-        let rad = theta * 2 * Math.PI;
-        let n = { x: Math.cos(rad), y: Math.sin(rad) };
-        let center = { x: n.x * d, y: n.y * d };
-        let p = { x: -n.y, y: n.x };
-    
-        // Define an initial large segment
-        let segment = {
-            start: { x: center.x - 1000 * p.x, y: center.y - 1000 * p.y },
-            end: { x: center.x + 1000 * p.x, y: center.y + 1000 * p.y }
-        };
-        if(!segment){
-          return;
-        }
-        // Filter ancestors to only clip if this node is on the back side
-        //let relevantAncestors = ancestorLines.filter(ancestor => isBehind);
-    
-        // Clip the segment against relevant ancestor lines
-        ancestors.forEach(ancestor => {
-            let pos = findPosition(node, ancestor);
-            if(pos !== null){
-                segment = clipSegment(segment, ancestor, pos);
-            }
-        });
-        
-        if (!segment) return;
-        // Clip the segment against the canvas boundaries
-        segment = clipToCanvas(segment, canvas);
-        if (!segment) return;
-    
-        // Draw the clipped line
-        ctx.beginPath();
-        ctx.moveTo(segment.start.x, segment.start.y);
-        ctx.lineTo(segment.end.x, segment.end.y);
-        ctx.strokeStyle = node === this.selectedNode ? "black" : "black";
-        ctx.lineWidth = node === this.selectedNode ? 3 : 1;
-        ctx.stroke();
-    
-        // Draw normal indicator from the center of the visible segment
-        let midX = (segment.start.x + segment.end.x) / 2;
-        let midY = (segment.start.y + segment.end.y) / 2;
-
-        ctx.beginPath();
-        ctx.moveTo(midX, midY);
-        ctx.lineTo(midX + (10 * n.x), midY + (10 * n.y));
-        ctx.strokeStyle = 'purple';
-        ctx.stroke();
-
-        // Recursively draw children, passing down correct ancestor data
-        let newAncestors = [...ancestors, node];
-     
-        // Traverse left side (this is behind the node if it's on the "back" side)
-        if (node.left) {
-            this.traverseAndDraw(node.left, ctx, canvas, newAncestors, true);  // "behind" node 0
-        }
-        // Traverse right side (this is in front of node 1 if it's on the "front" side)
-        if (node.right) {
-            this.traverseAndDraw(node.right, ctx, canvas, newAncestors, false); // "in front" of node 1
-        }
-    }
-
-    traverseAndDrawLeaves(node, ctx, canvas, ancestors = [], isBehind = false) {
-        if (!node) return;
-
-        // Handle leaf nodes
-        if (node.value < 0) {
-            let fillPolygon = getCanvasPolygon(canvas);
-    
-            // Clip the polygon by all ancestor lines to get the exact remaining region
-            ancestors.forEach(ancestor => {
-                let pos = findPosition(node, ancestor);
-                fillPolygon = clipPolygon(fillPolygon, ancestor, pos);
-            });
-            
-            // Set the leaf node's polygon to the full fillNode
-            node.polygon = fillPolygon;
-
-            // Draw the filled polygon
-            switch(node.value){
-                case -1:
-                    ctx.fillStyle = node === this.selectedNode ? "#2a5aae" : "#3c82fa";
-                    break;
-                case -2:
-                    ctx.fillStyle = node === this.selectedNode ? "#ae5a2a" : "#fa823c";
-                    break;
-                default:
-                    ctx.fillStyle = "pink";
-                    break;
-            }
-            
-            ctx.beginPath();
-            ctx.moveTo(fillPolygon[0].x, fillPolygon[0].y);
-            for (let i = 1; i < fillPolygon.length; i++) {
-                ctx.lineTo(fillPolygon[i].x, fillPolygon[i].y);
-            }
-            ctx.closePath();
-            ctx.fill();
-    
-            return; // Stop drawing normal lines for solid regions
-        }
-        
-        // Draw lines for non-leaf nodes
-        let theta = node.angle;
-        let d = node.distance;
-        let rad = theta * 2 * Math.PI;
-        let n = { x: Math.cos(rad), y: Math.sin(rad) };
-        let center = { x: n.x * d, y: n.y * d };
-        let p = { x: -n.y, y: n.x };
-    
-        // Define an initial large segment
-        let segment = {
-            start: { x: center.x - 1000 * p.x, y: center.y - 1000 * p.y },
-            end: { x: center.x + 1000 * p.x, y: center.y + 1000 * p.y }
-        };
-        if(!segment){
-          return;
-        }
-        // Filter ancestors to only clip if this node is on the back side
-        //let relevantAncestors = ancestorLines.filter(ancestor => isBehind);
-    
-        // Clip the segment against relevant ancestor lines
-        ancestors.forEach(ancestor => {
-            let pos = findPosition(node, ancestor);
-            if(pos !== null){
-                segment = clipSegment(segment, ancestor, pos);
-            }
-        });
-        
-        if (!segment) return;
-        // Clip the segment against the canvas boundaries
-        segment = clipToCanvas(segment, canvas);
-        if (!segment) return;
-
-        // Recursively draw children, passing down correct ancestor data
-        let newAncestors = [...ancestors, node];
-     
-        // Traverse left side (this is behind the node if it's on the "back" side)
-        if (node.left) {
-            this.traverseAndDrawLeaves(node.left, ctx, canvas, newAncestors, true);  // "behind" node 0
-        }
-        // Traverse right side (this is in front of node 1 if it's on the "front" side)
-        if (node.right) {
-            this.traverseAndDrawLeaves(node.right, ctx, canvas, newAncestors, false); // "in front" of node 1
-        }
-    }
+      // Recursively draw children, passing down correct ancestor data
+      let newAncestors = [...ancestors, node];
+   
+      // Traverse left side (this is behind the node if it's on the "back" side)
+      if (node.left) {
+          this.traverseAndDrawLeaves(node.left, ctx, canvas, newAncestors, true);  // "behind" node 0
+      }
+      // Traverse right side (this is in front of node 1 if it's on the "front" side)
+      if (node.right) {
+          this.traverseAndDrawLeaves(node.right, ctx, canvas, newAncestors, false); // "in front" of node 1
+      }
+  }
 }
+
+
 
 
 
@@ -455,76 +457,74 @@ function clipSegment(segment, ancestor, behind) {
     return d1 >= 0 ? { start: segment.start, end: intersection } : { start: intersection, end: segment.end };
 }
 
-    function clipToCanvas(segment, canvas) {
-        let xMin = 0, yMin = 0, xMax = canvas.width, yMax = canvas.height;
-        let { start, end } = segment;
+function clipToCanvas(segment, canvas) {
+    let xMin = 0, yMin = 0, xMax = canvas.width, yMax = canvas.height;
+    let { start, end } = segment;
 
-        function clip(p1, p2, boundaryCheck) {
-            let d1 = boundaryCheck(p1);
-            let d2 = boundaryCheck(p2);
-            if (d1 >= 0 && d2 >= 0) return [p1, p2]; // Fully inside
-            if (d1 < 0 && d2 < 0) return null; // Fully outside
+    function clip(p1, p2, boundaryCheck) {
+        let d1 = boundaryCheck(p1);
+        let d2 = boundaryCheck(p2);
+        if (d1 >= 0 && d2 >= 0) return [p1, p2]; // Fully inside
+        if (d1 < 0 && d2 < 0) return null; // Fully outside
 
-            let t = d1 / (d1 - d2);
-            let intersection = {
-                x: p1.x + t * (p2.x - p1.x),
-                y: p1.y + t * (p2.y - p1.y)
-            };
-            return d1 >= 0 ? [p1, intersection] : [intersection, p2];
-        }
-
-        let clipped = clip(start, end, p => p.x - xMin);
-        if (!clipped) return null;
-        clipped = clip(clipped[0], clipped[1], p => xMax - p.x);
-        if (!clipped) return null;
-        clipped = clip(clipped[0], clipped[1], p => p.y - yMin);
-        if (!clipped) return null;
-        clipped = clip(clipped[0], clipped[1], p => yMax - p.y);
-        if (!clipped) return null;
-
-        return { start: clipped[0], end: clipped[1] };
+        let t = d1 / (d1 - d2);
+        let intersection = {
+            x: p1.x + t * (p2.x - p1.x),
+            y: p1.y + t * (p2.y - p1.y)
+        };
+        return d1 >= 0 ? [p1, intersection] : [intersection, p2];
     }
+
+    let clipped = clip(start, end, p => p.x - xMin);
+    if (!clipped) return null;
+    clipped = clip(clipped[0], clipped[1], p => xMax - p.x);
+    if (!clipped) return null;
+    clipped = clip(clipped[0], clipped[1], p => p.y - yMin);
+    if (!clipped) return null;
+    clipped = clip(clipped[0], clipped[1], p => yMax - p.y);
+    if (!clipped) return null;
+
+    return { start: clipped[0], end: clipped[1] };
+}
       
-      const tree = new BinaryTree();
-      tree.render();
+    const tree = new BinaryTree();
+    tree.render();
 
-      function updateCanvas() {
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        tree.traverseAndDrawLeaves(tree.root, ctx, canvas);
-        tree.traverseAndDraw(tree.root, ctx, canvas);
-      }
+    function updateCanvas() {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      tree.traverseAndDrawLeaves(tree.root, ctx, canvas);
+      tree.traverseAndDraw(tree.root, ctx, canvas);
+    }
 
-      function updateNode() {
-        tree.updateNode();
-      }
+    function updateNode() {
+      tree.updateNode();
+    }
 
-      function deleteNode() {
-        tree.deleteNode();
-      }
+    function deleteNode() {
+      tree.deleteNode();
+    }
 
-      function addChild(isLeft) {
-        tree.addChild(isLeft);
-        
-      }
-      function angleToFixedNormal(theta){
-        let rad = theta * 2 * Math.PI;
-        let n = {
-              x: Math.round(Math.cos(rad) * 4096),
-              y: Math.round(Math.sin(rad) * 4096)
-            };
-        return n
-      }
+    function addChild(isLeft) {
+      tree.addChild(isLeft);  
+    }
+    function angleToFixedNormal(theta){
+      let rad = theta * 2 * Math.PI;
+      let n = {
+        x: Math.round(Math.cos(rad) * 4096),
+        y: Math.round(Math.sin(rad) * 4096)
+      };
+      return n
+    }
   
 
-
-      // Polygon splitting
-      class PolygonSplitter {
+    // Polygon splitting
+class PolygonSplitter {
     constructor(polygon) {
-        this.polygon = polygon; // Array of {x, y} points
-        this.rectangles = [];
-        this.triangles = [];
+      this.polygon = polygon; // Array of {x, y} points
+      this.rectangles = [];
+      this.triangles = [];
     }
 
     // Check if a given quadrilateral is a rectangle
@@ -558,7 +558,6 @@ function clipSegment(segment, ancestor, behind) {
                 }
             }
         }
-
         return remainingPoints; // Return points not part of rectangles
     }
 
@@ -683,12 +682,56 @@ function clipSegment(segment, ancestor, behind) {
         textarea.value = exportString;
         console.log(exportString);
       }
+
+      function downloadTree(){
+        var element = document.createElement('a');
+        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(JSON.stringify(tree.root)));
+        element.setAttribute('download', "tree.txt");
+
+        element.style.display = 'none';
+        document.body.appendChild(element);
+
+        element.click();
+
+        document.body.removeChild(element);
+      }
       
+      document.getElementById('fileSelector').addEventListener('click', () => {
+        document.getElementById('fileSelector').value = "";
+      });
+      document.getElementById('fileSelector').addEventListener('change', (event) => {
+        const fileList = event.target.files;
+        if(fileList.length <= 0){
+          return;
+        }
+        
+        let fileReader = new FileReader();
+        fileReader.addEventListener(
+          "load",
+          () => {
+            console.log(fileReader.result);
+
+            tree.root = JSON.parse(fileReader.result);
+            tree.render();
+          },
+          false
+        );
+
+        let file = fileList[0];
+        if(!file.type.startsWith("text/")){
+          return;
+        }
+        if(file){
+          fileReader.readAsText(file);
+        }
+
+      });
+
+
       
       document.getElementById("nodeValue").addEventListener('input', updateNode);
       document.getElementById("nodeAngle").addEventListener('input', updateNode);
       document.getElementById("nodeDistance").addEventListener('input', updateNode);
-      
       
     </script>
   </body>
